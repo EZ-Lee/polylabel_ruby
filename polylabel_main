@@ -1,0 +1,138 @@
+def poly_label(polygon)
+  first_item = polygon[0]
+  min_x = first_item.x
+  min_y = first_item.y
+  min_z = first_item.z
+  max_x = first_item.x
+  max_y = first_item.y
+  polygon.each { |p|
+    if p.x < min_x
+      min_x = p.x
+    end
+    if p.y < min_y
+      min_y = p.y
+    end
+    if p.x > max_x
+      max_x = p.x
+    end
+    if p.y > max_y
+      max_y = p.y
+    end
+  }
+  width = max_x - min_x
+  height = max_y - min_y
+  cell_size = [width, height].min
+  h = cell_size * 0.5
+  arr = []
+  if cell_size == 0.0
+    [min_x, min_y, min_z]
+  else
+    x = min_x
+    while x < max_x
+      y = min_y
+      while y < max_y
+        c = Cell.new(x + h, y + h, h, polygon)
+        y += cell_size
+        arr << c
+      end
+      x += cell_size
+    end
+    best_cell = _get_centroid_cell(polygon)
+
+    bbox_cell = Cell.new(min_x + width * 0.5, min_y + height * 0.5, 0, polygon)
+
+    if bbox_cell.d > best_cell.d
+      best_cell = bbox_cell
+    end
+    num = arr.length
+    while !arr.empty?
+      cell = arr.shift
+      if cell.d > best_cell.d
+        best_cell = cell
+      end
+      next if cell.max - best_cell.d > 1.0
+      h = cell.h / 2
+      arr << Cell.new(cell.x - h, cell.y - h, h, polygon)
+      arr << Cell.new(cell.x + h, cell.y - h, h, polygon)
+      arr << Cell.new(cell.x - h, cell.y + h, h, polygon)
+      arr << Cell.new(cell.x + h, cell.y + h, h, polygon)
+      num += 4
+    end
+    [best_cell.x, best_cell.y, min_z]
+  end
+end
+
+def _get_centroid_cell(polygon)
+  area = 0
+  x = 0
+  y = 0
+  points = polygon
+  b = points[-1]  # prev
+  points.each { |a|
+    f = a.x * b.y - b.x * a.y
+    x += (a.x + b.x) * f
+    y += (a.y + b.y) * f
+    area += f * 3
+    b = a
+  }
+  return Cell.new(points[0].x, points[0].y, 0, polygon) if area == 0
+  return Cell.new(x / area, y / area, 0, polygon)
+end
+
+class Cell
+  attr_accessor :x, :y, :h, :max, :d
+  def initialize(x, y, h, polygon)
+    @h = h
+    @x = x
+    @y = y
+    @d = _point_to_polygon_distance(x, y, polygon)
+    @max = @d + @h * Math.sqrt(2)
+  end
+
+  def _point_to_polygon_distance(x, y, polygon)
+    inside = false
+    min_dist_sq = 0.0
+    b = polygon[-1]
+    polygon.each do |a|
+      if (a.y > y) != (b.y > y) && (x < (b.x - a.x) * (y - a.y) / (b.y - a.y).to_f + a.x)
+        inside = !inside
+      end
+      min_dist_sq = [min_dist_sq, _get_seg_dist_sq(x, y, a, b)].min
+      b = a
+    end
+    result = Math.sqrt(min_dist_sq)
+    if !inside
+      return -result
+    else
+      return result
+    end
+  end
+
+  def _get_seg_dist_sq(px, py, a, b)
+    x = a.x
+    y = a.y
+    dx = b.x - x
+    dy = b.y - y
+    if dx != 0 || dy != 0
+      t = ((px - x) * dx + (py - y) * dy) / (dx * dx + dy * dy)
+      if t > 1
+        x = b.x
+        y = b.y
+      elsif t > 0
+        x += dx * t
+        y += dy * t
+      end
+    end
+    dx = px - x
+    dy = py - y
+    dx * dx + dy * dy
+  end
+
+end
+# model = Sketchup.active_model
+# entities = model.active_entities
+# selection = model.selection.first
+# pts = selection.outer_loop.vertices.map(&:position)
+# pt = poly_label(pts)
+# entities.add_cpoint pt
+
